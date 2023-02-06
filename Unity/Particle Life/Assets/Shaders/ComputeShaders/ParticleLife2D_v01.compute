@@ -1,0 +1,95 @@
+/* Each #kernel tells which function to compile; you can have many kernels */
+#pragma kernel CSMain
+
+// RWTexture2D<float4> BuildingMask;
+
+float maxRange = 90.0f;
+float minRange = 3.0f;
+
+float maxDotSpeed = 3.0f;
+
+float proximityRepulseForce = 3.0f;
+float attractionForce = 3.0f;
+float attractionForceDivFactor = 100000.0;
+float globalFriction = .9;
+
+float worldBoundsMinX;
+float worldBoundsMinY;
+float worldBoundsMaxX;
+float worldBoundsMaxY;
+
+struct Dot {
+    int colorIndex;
+    float3 position;
+    float3 speed;
+    float friction;
+    float size;
+};
+int numDots;
+
+RWStructuredBuffer<Dot> DotsBuffer;
+
+// not RW because we don't need to write to it
+StructuredBuffer<float> colorMatrixBuffer;
+int numColors;
+
+static const int threadGroupSize = 1024;
+
+// helpful: https://www.youtube.com/watch?v=V-yqiLyU27U
+
+//*
+float GetColorInteractionByIndex(int p1, int p2) {
+  float f = 0.0;
+
+  f = colorMatrixBuffer[p1 + numColors * p2];
+
+  return f;
+}
+//*/
+
+[numthreads(threadGroupSize, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Dot d = DotsBuffer[id.x];
+    for (int j = 0; j < numDots; j++) {
+        Dot d2 = DotsBuffer[j];
+        if ((uint)id.x != (uint)j) {
+
+            // apply forces
+
+            // ensure minimum distance between the dots 
+            if (distance(d.position, d2.position) < (d.size + minRange)) {
+                float3 _f1 = d2.position - d.position;
+                _f1 = normalize(_f1);
+
+                d.speed += _f1 * (-proximityRepulseForce * attractionForce / attractionForceDivFactor);
+            }
+
+            // if within configured radius: attract or repel (dependent on color-matrix) 
+            if (distance(d2.position, d.position) < maxRange) {
+                float colorInteraction = GetColorInteractionByIndex(d.colorIndex, d2.colorIndex);
+
+                // if (d.colorIndex == d2.colorIndex) {
+                    float3 _f1 = d2.position - d.position;
+                    _f1 = normalize(_f1);
+
+                    d.speed += _f1 * (colorInteraction * attractionForce / attractionForceDivFactor); // TODO: replace '1.0' with colorInteraction! 
+                    // d.speed += _f1 * (1.0 * attractionForce / attractionForceDivFactor); // TODO: replace '1.0' with colorInteraction! 
+                // }
+
+            }
+
+
+        }
+        //DotsBuffer[j] = d2;
+    }
+
+    if (length(d.speed) > maxDotSpeed) {
+        d.speed = normalize(d.speed) * maxDotSpeed;
+    }
+
+    DotsBuffer[id.x] = d;
+
+}
+
+

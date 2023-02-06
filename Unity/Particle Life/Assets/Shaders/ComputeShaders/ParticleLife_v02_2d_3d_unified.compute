@@ -1,0 +1,186 @@
+/* Each #kernel tells which function to compile; you can have many kernels */
+#pragma kernel CSMain
+#pragma kernel CalcPositions2D
+#pragma kernel CalcPositions3D
+
+// RWTexture2D<float4> BuildingMask;
+
+float maxRange = 90.0f;
+float minRange = 3.0f;
+
+float maxDotSpeed = 3.0f;
+
+float proximityRepulseForce = 3.0f;
+float attractionForce = 3.0f;
+float attractionForceDivFactor = 10.0;
+float globalFriction = .9;
+
+float worldBoundsMinX;
+float worldBoundsMinY;
+float worldBoundsMinZ;
+
+float worldBoundsMaxX;
+float worldBoundsMaxY;
+float worldBoundsMaxZ;
+
+float deltaTime;
+
+struct Dot {
+    int colorIndex;
+    float3 position;
+    float3 speed;
+    float friction;
+    float size;
+	float repelDistance;
+	float attractDistance;
+};
+int numDots;
+
+RWStructuredBuffer<Dot> DotsBuffer;
+
+RWStructuredBuffer<float3> DotsPositionBuffer;
+
+// not RW because we don't need to write to it
+StructuredBuffer<float> colorMatrixBuffer;
+int numColors;
+
+static const int threadGroupSize = 1024;
+
+// helpful: https://www.youtube.com/watch?v=V-yqiLyU27U
+
+//*
+float GetColorInteractionByIndex(int p1, int p2) {
+  float f = 0.0;
+
+  f = colorMatrixBuffer[p1 + numColors * p2];
+
+  return f;
+}
+//*/
+
+[numthreads(threadGroupSize, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Dot d = DotsBuffer[id.x];
+    for (int j = 0; j < numDots; j++) {
+        Dot d2 = DotsBuffer[j];
+        if ((uint)id.x != (uint)j) {
+
+            // apply forces
+
+            // ensure minimum distance between the dots   
+            // if (distance(d.position, d2.position) < (d.size + minRange)) { 
+            if (distance(d.position + d.speed, d2.position + d2.speed) < (d.size + minRange)) {
+                float3 _f1 = d2.position - d.position;
+                _f1 = normalize(_f1);
+
+                d.speed += _f1 * (-proximityRepulseForce * attractionForce / attractionForceDivFactor);
+            }
+			
+            // if within configured radius: attract or repel (dependent on color-matrix) 
+            else if (distance(d2.position, d.position) < maxRange) {
+                float colorInteraction = GetColorInteractionByIndex(d.colorIndex, d2.colorIndex);
+
+                // if (d.colorIndex == d2.colorIndex) { 
+                    float3 _f1 = d2.position - d.position;
+                    _f1 = normalize(_f1);
+
+                    d.speed += _f1 * (colorInteraction * attractionForce / attractionForceDivFactor);
+					// d.speed += deltaTime;
+                    // d.speed += _f1 * (1.0 * attractionForce / attractionForceDivFactor); // TODO: replace '1.0' with colorInteraction! 
+                // }
+
+            }
+        }
+    }
+
+    if (length(d.speed) > maxDotSpeed) {
+        d.speed = normalize(d.speed) * maxDotSpeed;
+    }
+
+    DotsBuffer[id.x] = d;
+
+}
+
+// TODO -> unify CalcPositions2D and CalcPositions3D -> it's ridiculously the same
+[numthreads(threadGroupSize, 1, 1)]
+void CalcPositions2D (uint3 id : SV_DispatchThreadID)
+{
+    Dot d = DotsBuffer[id.x];
+
+	// update positions
+	d.position += d.speed  * 60.0 * deltaTime;
+	// DotsBuffer[id.x].speed *= DotsBuffer[id.x].friction;
+	d.speed *= globalFriction;
+
+
+	// constrain to world
+	if (d.position.x < worldBoundsMinX) {
+		d.speed.x *= -1.0;
+		d.position.x = worldBoundsMinX;
+	}
+	if (d.position.y < worldBoundsMinY) {
+		d.speed.y *= -1.0;
+		d.position.y = worldBoundsMinY;
+	}
+
+	if (d.position.x > worldBoundsMaxX) {
+		d.speed.x *= -1.0;
+		d.position.x = worldBoundsMaxX;
+	}
+	if (d.position.y > worldBoundsMaxY) {
+		d.speed.y *= -1.0;
+		d.position.y = worldBoundsMaxY;
+	}
+
+	d.position.z = 0.0; // necessary to constrain?
+
+    DotsBuffer[id.x] = d;
+    DotsPositionBuffer[id.x] = d.position;
+}
+
+
+
+[numthreads(threadGroupSize, 1, 1)]
+void CalcPositions3D (uint3 id : SV_DispatchThreadID)
+{
+    Dot d = DotsBuffer[id.x];
+
+	// update positions
+	d.position += d.speed;
+	// DotsBuffer[id.x].speed *= DotsBuffer[id.x].friction;
+	d.speed *= globalFriction;
+
+
+	// constrain to world
+	if (d.position.x < worldBoundsMinX) {
+		d.speed.x *= -1.0;
+		d.position.x = worldBoundsMinX;
+	}
+	if (d.position.y < worldBoundsMinY) {
+		d.speed.y *= -1.0;
+		d.position.y = worldBoundsMinY;
+	}
+	if (d.position.z < worldBoundsMinZ) {
+		d.speed.z *= -1.0;
+		d.position.z = worldBoundsMinZ;
+	}
+
+	if (d.position.x > worldBoundsMaxX) {
+		d.speed.x *= -1.0;
+		d.position.x = worldBoundsMaxX;
+	}
+	if (d.position.y > worldBoundsMaxY) {
+		d.speed.y *= -1.0;
+		d.position.y = worldBoundsMaxY;
+	}
+	if (d.position.z > worldBoundsMaxZ) {
+		d.speed.z *= -1.0;
+		d.position.z = worldBoundsMaxX;
+	}
+
+    DotsBuffer[id.x] = d;
+    DotsPositionBuffer[id.x] = d.position;
+}
+
+
