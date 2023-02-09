@@ -6,11 +6,11 @@ using static MainScript;
 
 public class MainScript : MonoBehaviour {
 
-	public enum CalculationMethod {
+	public enum CalculationTarget {
 		CPU,
 		GPU
 	}
-	public CalculationMethod calculationMethod;
+	public CalculationTarget calculationTarget;
 
 	public enum RenderTarget {
 		GAMEOBJECTS,
@@ -25,6 +25,12 @@ public class MainScript : MonoBehaviour {
 	}
 	public ParticleLifeDimensions particleLifeDimensions;
 
+	public enum ParticlesInitShape {
+		RANDOM_POSITION,
+		BIG_BANG
+	}
+	public ParticlesInitShape particlesInitShape;
+
 
 	[Space(10)]
 	public int numDots = 1500;
@@ -36,29 +42,61 @@ public class MainScript : MonoBehaviour {
 	[Space(10)]
 	public DotSettings dotSettings_script;
 	public DotSettings dotSettings_compute;
+	private DotSettings dotSettings;
 
 	[System.Serializable]
 	public struct DotData {
-		public int colorIndex;
+		public int dotType;
 		public Vector3 position;
 		public Vector3 speed;
-		public float friction;
-		public float size;
-		public float repelDistance;
-		public float attractDistance;
 
 		public static int Size {
 			get {
 				return
 					1 * sizeof(int) +           // int
-					2 * 3 * sizeof(float) +     // vector3
-					4 * sizeof(float)           // float
+					2 * 3 * sizeof(float)       // vector3
 					;
 			}
 		}
 	}
 	private DotData[] dotsData;
 	private List<Dot> dots = new List<Dot>();
+
+	[System.Serializable]
+	public struct DotType {
+		public int colorIndex;
+		public float friction;
+		public float size;
+		public InteractSettings interactSettings;
+
+		public static int Size {
+			get {
+				return
+					1 * sizeof(int) +           // int
+					2 * sizeof(float) +         // float
+					1 * InteractSettings.Size
+					;
+			}
+		}
+	}
+	private DotType[] dotTypes;
+
+	[System.Serializable]
+	public struct InteractSettings {
+		public float minDistance;
+		public float minDistanceRepelPow;
+		public float minDistanceRepelStrength;
+		public float interactDistance;
+		public float interactStrength; // range [-1,1]
+
+		public static int Size {
+			get {
+				return
+					5 * sizeof(float)           // float
+					;
+			}
+		}
+	}
 
 	[System.Serializable]
 	public struct ColorAttractRepelData {
@@ -100,14 +138,6 @@ public class MainScript : MonoBehaviour {
 
 	private float attractionForceDivFactor = 100000f;
 
-	[System.Serializable]
-	public struct DotSize {
-		public float min;
-		public float max;
-	}
-	[Space(10)]
-	public DotSize dotSize;
-
 	[Space(10)]
 	public Dot dotPrefab;
 	public Transform dotsHolder;
@@ -115,10 +145,20 @@ public class MainScript : MonoBehaviour {
 	private GraphicsBuffer dotsPositionBuffer;
 	private GraphicsBuffer dotsColorsBuffer;
 	private GraphicsBuffer dotsSizeBuffer;
-	ComputeBuffer cb;
-	ComputeBuffer _colorMatrixBuffer;
+	private ComputeBuffer cb;
+	private ComputeBuffer _colorMatrixBuffer;
+
+	private bool IsInitted = false;
 
 	void Start () {
+		switch (calculationTarget) {
+			case CalculationTarget.CPU:
+				dotSettings = dotSettings_script;
+				break;
+			case CalculationTarget.GPU:
+				dotSettings = dotSettings_compute;
+				break;
+		}
 
 		initDots();
 
@@ -139,107 +179,27 @@ public class MainScript : MonoBehaviour {
 		Debug.Log("attractionMatrix length: " + attractionMatrix.Length);
 	}
 
-	private void OnDestroy () {
-		if (cb != null) {
-			cb.Release();
-		}
-		if (_colorMatrixBuffer != null) {
-			_colorMatrixBuffer.Release();
-		}
-	}
-
-	private void initDotsSizes () {
-		for (int i = 0; i < dotSizesPerColor.Length; i++) {
-			dotSizesPerColor[i] = Random.Range(dotSize.min, dotSize.max);
-		}
-	}
-
-	private void initDots () {
-		if (dotsPositionBuffer != null) dotsPositionBuffer.Dispose();
-		if (dotsColorsBuffer != null) dotsColorsBuffer.Dispose();
-		if (dotsSizeBuffer != null) dotsSizeBuffer.Dispose();
-
-		dotsData = new DotData[numDots];
-		dots = new List<Dot>();
-		Dot _dot;
-
-		initDotsSizes();
-
-		/* init attractors per color (new style)
-		colorAttractAndRepelMatrix = new ColorAttractRepelData[dotColors.Length, dotColors.Length];
-		for (int i = 0; i < dotColors.Length; i++) {
-			for (int j = 0; j < dotColors.Length; j++) {
-
-				colorAttractAndRepelMatrix[i, j] = 
-
-			}
-
-		}
-		//*/
-
-		dotsPositionBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float) * 3);
-		dotsColorsBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float) * 4);
-		dotsSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float));
-
-		Vector3[] positions = new Vector3[numDots];
-		Color[] colors = new Color[numDots];
-		float[] sizes = new float[numDots];
-
-		for (int i = 0; i < numDots; i++) {
-			DotData d = new DotData();
-
-			d.colorIndex = Random.Range(0, dotColors.Length);
-
-			d.position = new Vector3(
-							Random.Range(boundsMin.x, boundsMax.x),
-							Random.Range(boundsMin.y, boundsMax.y),
-							Random.Range(boundsMin.z, boundsMax.z)
-							);
-
-			if (particleLifeDimensions == ParticleLifeDimensions._2D) {
-				d.position.z = 0f;
-			}
-
-			//d.size = 2f;
-			d.colorIndex = Random.Range(0, 5);
-			d.size = dotSizesPerColor[d.colorIndex];
-			//d.size = Random.Range(dotSize.min, dotSize.max); // tmp
-			d.friction = 0.95f;
-
-			dotsData[i] = d;
-			positions[i] = d.position;
-			colors[i] = dotColors[d.colorIndex];
-			sizes[i] = d.size;
-
-			if (renderTarget == RenderTarget.GAMEOBJECTS) {
-				_dot = Instantiate(dotPrefab, dotsHolder);
-				_dot.SetData(d);
-				_dot.SetColor(dotColors[d.colorIndex]);
-				dots.Add(_dot);
-			}
-		}
-
-		dotsPositionBuffer.SetData(positions);
-		dotsColorsBuffer.SetData(colors);
-		dotsSizeBuffer.SetData(sizes);
-
-		IsInitted = true;
-	}
-
-
-	private bool IsInitted = false;
 	void Update () {
+		switch (calculationTarget) {
+			case CalculationTarget.CPU:
+				dotSettings = dotSettings_script;
+				break;
+			case CalculationTarget.GPU:
+				dotSettings = dotSettings_compute;
+				break;
+		}
+
 
 		handleKeyboardInput();
 
 		if (IsInitted) {
 
 			// update Dots
-			switch (calculationMethod) {
-				case CalculationMethod.CPU:
+			switch (calculationTarget) {
+				case CalculationTarget.CPU:
 					calcInScript();
 					break;
-				case CalculationMethod.GPU:
+				case CalculationTarget.GPU:
 					calcComputeShaderGeneric();
 					//switch (particleLifeDimensions) {
 					//	case ParticleLifeDimensions._2D:
@@ -323,35 +283,145 @@ public class MainScript : MonoBehaviour {
 		}
 	}
 
-	public Color dotIndexToColor (int colorIndex) {
-		return dotColors[colorIndex];
+	#region Init
+
+	private void initDotsSizes () {
+		for (int i = 0; i < dotSizesPerColor.Length; i++) {
+			dotSizesPerColor[i] = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
+		}
 	}
+
+	private void initDots () {
+		if (dotsPositionBuffer != null) dotsPositionBuffer.Dispose();
+		if (dotsColorsBuffer != null) dotsColorsBuffer.Dispose();
+		if (dotsSizeBuffer != null) dotsSizeBuffer.Dispose();
+
+		dotsData = new DotData[numDots];
+		dots = new List<Dot>();
+		Dot _dot;
+
+		initDotTypes();
+		initDotsSizes();
+
+		/* init attractors per color (new style)
+		colorAttractAndRepelMatrix = new ColorAttractRepelData[dotColors.Length, dotColors.Length];
+		for (int i = 0; i < dotColors.Length; i++) {
+			for (int j = 0; j < dotColors.Length; j++) {
+
+				colorAttractAndRepelMatrix[i, j] = 
+
+			}
+
+		}
+		//*/
+
+		dotsPositionBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float) * 3);
+		dotsColorsBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float) * 4);
+		dotsSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numDots, sizeof(float));
+
+		Vector3[] positions = new Vector3[numDots];
+		Color[] colors = new Color[numDots];
+		float[] sizes = new float[numDots];
+
+		for (int i = 0; i < numDots; i++) {
+
+			DotData d = new DotData();
+
+			d.dotType = Random.Range(0, dotColors.Length);
+
+			switch (particlesInitShape) {
+				case ParticlesInitShape.RANDOM_POSITION:
+					d.position = new Vector3(
+						Random.Range(boundsMin.x, boundsMax.x),
+						Random.Range(boundsMin.y, boundsMax.y),
+						Random.Range(boundsMin.z, boundsMax.z)
+						);
+					break;
+				case ParticlesInitShape.BIG_BANG:
+					d.position = new Vector3(
+						(boundsMin.x + boundsMax.x) / 2f,
+						(boundsMin.y + boundsMax.y) / 2f,
+						(boundsMin.z + boundsMax.z) / 2f
+						);
+					break;
+			}
+
+			if (particleLifeDimensions == ParticleLifeDimensions._2D) {
+				d.position.z = 0f;
+			}
+
+			dotsData[i] = d;
+			positions[i] = d.position;
+
+			if (renderTarget == RenderTarget.GAMEOBJECTS) {
+				_dot = Instantiate(dotPrefab, dotsHolder);
+				_dot.SetData(d, dotTypes[d.dotType]);
+				_dot.SetColor(dotColors[d.dotType]);
+				dots.Add(_dot);
+			}
+		}
+
+		dotsPositionBuffer.SetData(positions);
+		dotsColorsBuffer.SetData(colors);
+		dotsSizeBuffer.SetData(sizes);
+
+		IsInitted = true;
+	}
+
+	private void initDotTypes () {
+
+		dotTypes = new DotType[dotColors.Length];
+
+		for (int i = 0; i < dotTypes.Length; i++) {
+			dotTypes[i] = new DotType();
+			dotTypes[i].colorIndex = Random.Range(0, dotColors.Length);
+			dotTypes[i].size = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
+			dotTypes[i].friction = .95f;
+			dotTypes[i].interactSettings = createInteractSettings(dotTypes[i].size);
+
+		}
+	}
+
+	private InteractSettings createInteractSettings (float dotSize) {
+		InteractSettings i = new InteractSettings();
+
+		i.minDistance = dotSize + Random.Range(0f, 4f);
+		i.minDistanceRepelPow = Random.Range(1f, 3f);
+		i.minDistanceRepelStrength = Random.Range(1f, 3f);
+		i.interactDistance = i.minDistance + Random.Range(dotSettings.dotAttractionDistance.min, dotSettings.dotAttractionDistance.max);
+		i.interactStrength = Random.Range(-1f, 1f);
+
+		return i;
+	}
+
+	#endregion
 
 	DotData _d1;
 	DotData _d2;
-	Vector3 v;
+	Vector3 _v;
 	float colorInteraction;
 	int i, j;
 	private void calcInScript () {
-		for (i = 0; i < dotsData.Length; i++) {
+		int dotsDataLength = dotsData.Length;
+		for (i = 0; i < dotsDataLength; i++) {
 			_d1 = dotsData[i];
-			for (j = 0; j < dotsData.Length; j++) {
+			for (j = 0; j < dotsDataLength; j++) {
 				_d2 = dotsData[j];
 
 				if (_d1.Equals(_d2)) continue;
 
-				if (Vector3.Distance(_d1.position, _d2.position) < (_d1.size + dotSettings_script.dotsMinDistance)) {
-					v = _d2.position - _d1.position;
-					v = v.normalized;
+				if (Vector3.Distance(_d1.position, _d2.position) < (dotTypes[_d1.dotType].size + dotSettings_script.dotsMinDistance)) {
+					_v = _d2.position - _d1.position;
+					_v = _v.normalized;
 
-					_d1.speed += v * (-dotSettings_script.proximityRepulseForce * dotSettings_script.attractionForce / attractionForceDivFactor);
+					_d1.speed += _v * (-dotSettings_script.proximityRepulseForce * dotSettings_script.attractionForce / attractionForceDivFactor);
 				} else if (Vector3.Distance(_d1.position, _d2.position) < dotSettings_script.dotsAttractRange) {
-					colorInteraction = GetColorInteractionByIndex(_d1.colorIndex, _d2.colorIndex);
+					colorInteraction = GetColorInteractionByIndex(dotTypes[_d1.dotType].colorIndex, dotTypes[_d2.dotType].colorIndex);
 
-					v = _d2.position - _d1.position;
-					v = v.normalized;
+					_v = _d2.position - _d1.position;
+					_v = _v.normalized;
 
-					_d1.speed += v * (colorInteraction * dotSettings_script.attractionForce / attractionForceDivFactor); // replace '1f' with colorForce
+					_d1.speed += _v * (colorInteraction * dotSettings_script.attractionForce / attractionForceDivFactor); // replace '1f' with colorForce
 				}
 			}
 
@@ -630,8 +700,8 @@ public class MainScript : MonoBehaviour {
 				p = m_Particles[i];
 
 				p.position = dotsData[i].position;
-				p.startSize = dotsData[i].size;
-				p.startColor = dotColors[dotsData[i].colorIndex];
+				p.startSize = dotTypes[dotsData[i].dotType].size;
+				p.startColor = dotColors[dotTypes[dotsData[i].dotType].colorIndex]; // haha, this really did 
 
 				m_Particles[i] = p;
 			}
@@ -655,8 +725,8 @@ public class MainScript : MonoBehaviour {
 		for (int i = 0; i < dotsData.Length; i++) {
 			positions[i] = new Color(dotsData[i].position.x / 1000f + .5f, dotsData[i].position.y / 1000f + .5f, dotsData[i].position.z / 1000f + .5f, 0);
 			//positions[i] = new Color(dotsData[i].position.x, dotsData[i].position.y, dotsData[i].position.z, 0);
-			colors[i] = dotColors[dotsData[i].colorIndex];
-			colors[i].a = dotsData[i].size / 10f;
+			colors[i] = dotColors[dotTypes[dotsData[i].dotType].colorIndex];
+			colors[i].a = dotTypes[dotsData[i].dotType].size / 10f;
 		}
 
 		dotPosTex.SetPixels(positions);
@@ -687,11 +757,39 @@ public class MainScript : MonoBehaviour {
 
 	private void updateDotsGameObjects () {
 		for (int i = 0; i < dotsData.Length; i++) {
-			dots[i].SetData(dotsData[i]);
+			dots[i].SetData(dotsData[i], dotTypes[dotsData[i].dotType]);
 		}
 	}
 
 	public GraphicsBuffer GetDotsPositionBuffer () {
 		return this.dotsPositionBuffer != null ? this.dotsPositionBuffer : null;
 	}
+
+	public Color dotIndexToColor (int colorIndex) {
+		return dotColors[colorIndex];
+	}
+
+
+	private void OnDestroy () {
+		// ComputeBuffers
+		if (cb != null) {
+			cb.Release();
+		}
+		if (_colorMatrixBuffer != null) {
+			_colorMatrixBuffer.Release();
+		}
+
+		// GraphicsBuffers
+		if (dotsPositionBuffer != null) {
+			dotsPositionBuffer.Release();
+		}
+		if (dotsColorsBuffer != null) {
+			dotsColorsBuffer.Release();
+		}
+		if (dotsSizeBuffer != null) {
+			dotsSizeBuffer.Release();
+		}
+	}
+
+
 }

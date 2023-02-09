@@ -5,6 +5,17 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "DotSettings", menuName = "ScriptableObjects/DotSettings", order = 1)]
 public class DotSettings : ScriptableObject {
 
+	[System.Serializable]
+	public struct MinMax {
+		public float min;
+		public float max;
+	}
+
+	[Header("init values")]
+	public MinMax dotSize;
+	public MinMax dotAttractionDistance;
+
+	[Space(10)]
 	[Range(0f, 1f)]
 	public float globalFriction = .9f;
 	public float frictionUpperLimit = .96f;
@@ -22,4 +33,5 @@ public class DotSettings : ScriptableObject {
 
 	[Space(10)]
 	public float maxDotSpeed = 1.5f;
+
 }

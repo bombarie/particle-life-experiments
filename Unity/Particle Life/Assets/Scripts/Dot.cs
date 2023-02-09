@@ -5,6 +5,7 @@ using UnityEngine;
 public class Dot : MonoBehaviour {
 
 	private MainScript.DotData data;
+	private MainScript.DotType dotType;
 	private bool IsSet = false;
 
 	private Material mat;
@@ -17,12 +18,13 @@ public class Dot : MonoBehaviour {
 	void Update () {
 		if (IsSet) {
 			transform.position = data.position;
-			transform.localScale = Vector3.one * data.size;
+			transform.localScale = Vector3.one * dotType.size;
 		}
 	}
 
-	public void SetData(MainScript.DotData data) {
+	public void SetData(MainScript.DotData data, MainScript.DotType dotType) {
 		this.data = data;
+		this.dotType = dotType;
 		IsSet = true;
 	}
 
