@@ -670,10 +670,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d9f6de75c457c4bd28aa957242641bd4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  calculationMethod: 1
+  calculationTarget: 1
   renderTarget: 2
   particleLifeDimensions: 0
-  numDots: 8192
+  particlesInitShape: 0
+  numDots: 25000
   ps: {fileID: 1563415583}
   vfx: {fileID: 435022703}
   dotSettings_script: {fileID: 11400000, guid: 62688d8872b3d4d5c945c1abfa425866, type: 2}
@@ -687,13 +688,8 @@ MonoBehaviour:
   - {r: 0.9150943, g: 0.15970986, b: 0.6050972, a: 0}
   boundsMin: {x: -300, y: -300, z: -300}
   boundsMax: {x: 300, y: 300, z: 300}
-  dotsComputeShader2D: {fileID: 7200000, guid: cbbf8dfd6cb564861b0aba6af04e953e, type: 3}
-  dotsComputeShader3D: {fileID: 7200000, guid: 169f43a837be942608377cf020331a21, type: 3}
   dotsComputeShaderGeneric: {fileID: 7200000, guid: ae79117d31f714a57bcbf5dff69de1ba,
     type: 3}
-  dotSize:
-    min: 1.5
-    max: 6
   dotPrefab: {fileID: 2410613667538520217, guid: fdba2191f9cf84726a555979ece711a2,
     type: 3}
   dotsHolder: {fileID: 1175190282}

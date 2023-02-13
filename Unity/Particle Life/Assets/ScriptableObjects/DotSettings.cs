@@ -21,10 +21,13 @@ public class DotSettings : ScriptableObject {
 	public float frictionUpperLimit = .96f;
 	public float frictionLowerLimit = .7f;
 
+
+	// TODO remove these two -> are now part of InteractSettings struct aka unique per dot type
 	[Space(10)]
 	public float dotsAttractRange = 90f;
 	public float dotsMinDistance = 3f;
 
+	// TODO remove these two -> are now part of InteractSettings struct aka unique per dot type
 	[Space(10)]
 	[Range(1, 600)]
 	public int attractionForce = 1;

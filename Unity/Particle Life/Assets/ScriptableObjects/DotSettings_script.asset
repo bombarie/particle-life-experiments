@@ -12,6 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 356c07973f55d4e20930283588e36c9f, type: 3}
   m_Name: DotSettings_script
   m_EditorClassIdentifier: 
+  dotSize:
+    min: 0.7
+    max: 4
+  dotAttractionDistance:
+    min: 40
+    max: 80
   globalFriction: 0.85
   frictionUpperLimit: 0.96
   frictionLowerLimit: 0.7
@@ -19,3 +25,4 @@ MonoBehaviour:
   dotsMinDistance: 2
   attractionForce: 90
   proximityRepulseForce: 65
+  maxDotSpeed: 1.5

@@ -13,16 +13,16 @@ MonoBehaviour:
   m_Name: DotSettings_compute
   m_EditorClassIdentifier: 
   dotSize:
-    min: 0.7
-    max: 4
+    min: 0.9
+    max: 2
   dotAttractionDistance:
-    min: 40
-    max: 80
+    min: 30
+    max: 100
   globalFriction: 0.97
   frictionUpperLimit: 0.96
   frictionLowerLimit: 0.7
   dotsAttractRange: 80
-  dotsMinDistance: 1
-  attractionForce: 30
-  proximityRepulseForce: 281
+  dotsMinDistance: 0
+  attractionForce: 351
+  proximityRepulseForce: 50
   maxDotSpeed: 3

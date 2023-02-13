@@ -84,7 +84,7 @@ public class MainScript : MonoBehaviour {
 	[System.Serializable]
 	public struct InteractSettings {
 		public float minDistance;
-		public float minDistanceRepelPow;
+		public float minDistanceRepelPowFactor;
 		public float minDistanceRepelStrength;
 		public float interactDistance;
 		public float interactStrength; // range [-1,1]
@@ -95,6 +95,10 @@ public class MainScript : MonoBehaviour {
 					5 * sizeof(float)           // float
 					;
 			}
+		}
+		public string toString () {
+			//return "minDistance: " + minDistance + ", minDistanceRepelStrength: " + minDistanceRepelStrength + ", ";
+			return "minDistance: " + minDistance + ", interactDistance: " + interactDistance;
 		}
 	}
 
@@ -128,11 +132,11 @@ public class MainScript : MonoBehaviour {
 	[Space(10)]
 	public Color[] dotColors = new Color[5];
 
+	[Header ("World bounds")]
 	public Vector3 boundsMin = new Vector3(-150f, -100f, 0f);
 	public Vector3 boundsMax = new Vector3(150f, 100f, 0f);
 
-	public ComputeShader dotsComputeShader2D;
-	public ComputeShader dotsComputeShader3D;
+	[Space(10)]
 	public ComputeShader dotsComputeShaderGeneric;
 	private static int ThreadGroupSize = 1024;
 
@@ -145,10 +149,28 @@ public class MainScript : MonoBehaviour {
 	private GraphicsBuffer dotsPositionBuffer;
 	private GraphicsBuffer dotsColorsBuffer;
 	private GraphicsBuffer dotsSizeBuffer;
-	private ComputeBuffer cb;
-	private ComputeBuffer _colorMatrixBuffer;
+	private ComputeBuffer dots_cb;
+	private ComputeBuffer dotTypes_cb;
+	private ComputeBuffer colorMatrix_cb;
 
 	private bool IsInitted = false;
+
+	// Shuriken particle system variables
+	private ParticleSystem.Particle[] m_Particles;
+	private ParticleSystem.Particle p;
+	private ParticleSystem.MainModule psMain;
+	private int numParticlesAlive;
+
+	[Header("Scene init settings")]
+	[Space(10)]
+	public float bigbangRandStartPos = 10f;
+
+	// used in calcInScript()
+	private DotData _d1;
+	private DotData _d2;
+	private Vector3 _v;
+	private float colorInteraction;
+	private int i, j;
 
 	void Start () {
 		switch (calculationTarget) {
@@ -163,10 +185,13 @@ public class MainScript : MonoBehaviour {
 		initDots();
 
 		// init compute buffers
-		cb = new ComputeBuffer(dotsData.Length, DotData.Size);
-		cb.SetData(dotsData);
+		dots_cb = new ComputeBuffer(dotsData.Length, DotData.Size);
+		dots_cb.SetData(dotsData);
 
-		_colorMatrixBuffer = new ComputeBuffer(attractionMatrix.Length, attractionMatrix.Length * sizeof(float));
+		dotTypes_cb = new ComputeBuffer(dotTypes.Length, DotType.Size);
+		dotTypes_cb.SetData(dotTypes);
+
+		colorMatrix_cb = new ComputeBuffer(attractionMatrix.Length, attractionMatrix.Length * sizeof(float));
 		updateAttractionRulesComputeBuffer();
 
 
@@ -177,6 +202,22 @@ public class MainScript : MonoBehaviour {
 		ps.gameObject.SetActive(renderTarget == RenderTarget.PARTICLESYSTEM);
 
 		Debug.Log("attractionMatrix length: " + attractionMatrix.Length);
+		//Debug.Log("dotColors length: " + dotColors.Length);
+		//Debug.Log("dotTypes length: " + dotTypes.Length);
+
+		/* a few random prints
+		for (int i = 0; i < Mathf.Min(10, dotsData.Length); i++) {
+			int r = Random.Range(0, dotsData.Length);
+			DotData d = dotsData[r];
+			DotType dt = dotTypes[d.dotType];
+			Debug.Log("Random sampple at index " + r + " >> size: " + dt.size + ", colorIndex: " + dt.colorIndex + ", interactionsettings: " + dt.interactSettings.toString());
+		}
+		Debug.Log("");
+		//*/
+
+		for (i = 0; i < dotColors.Length; i++) {
+			Debug.Log("dotColors[" + i + "] = " + dotColors[i] + ", dotTypes[" + i + "].colorIndex = " + dotTypes[i].colorIndex + ", dotTypes[" + i + "].size = " + dotTypes[i].size);
+		}
 	}
 
 	void Update () {
@@ -226,7 +267,7 @@ public class MainScript : MonoBehaviour {
 				case RenderTarget.VFXGRAPH:
 					// set Dots to ParticleSystem
 
-					// not needed anymore -> is the binding mechanism more efficient than setting properties, btw?
+					// not needed anymore -> is the binding mechanism more efficient than manually setting properties, btw? (I don't think so)
 					//updateVFXGraphTexture2D();
 
 					updateVFXGraphGraphicsBuffer();
@@ -279,17 +320,12 @@ public class MainScript : MonoBehaviour {
 			initDots();
 
 			// update computebuffer with new particles definitions
-			cb.SetData(dotsData);
+			dots_cb.SetData(dotsData);
+			dotTypes_cb.SetData(dotTypes);
 		}
 	}
 
 	#region Init
-
-	private void initDotsSizes () {
-		for (int i = 0; i < dotSizesPerColor.Length; i++) {
-			dotSizesPerColor[i] = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
-		}
-	}
 
 	private void initDots () {
 		if (dotsPositionBuffer != null) dotsPositionBuffer.Dispose();
@@ -300,8 +336,8 @@ public class MainScript : MonoBehaviour {
 		dots = new List<Dot>();
 		Dot _dot;
 
-		initDotTypes();
-		initDotsSizes();
+		createDotTypes();
+		initDotsSizes(); // this is old approach
 
 		/* init attractors per color (new style)
 		colorAttractAndRepelMatrix = new ColorAttractRepelData[dotColors.Length, dotColors.Length];
@@ -339,9 +375,9 @@ public class MainScript : MonoBehaviour {
 					break;
 				case ParticlesInitShape.BIG_BANG:
 					d.position = new Vector3(
-						(boundsMin.x + boundsMax.x) / 2f,
-						(boundsMin.y + boundsMax.y) / 2f,
-						(boundsMin.z + boundsMax.z) / 2f
+						(boundsMin.x + boundsMax.x) / 2f + Random.Range(-bigbangRandStartPos, bigbangRandStartPos),
+						(boundsMin.y + boundsMax.y) / 2f + Random.Range(-bigbangRandStartPos, bigbangRandStartPos),
+						(boundsMin.z + boundsMax.z) / 2f + Random.Range(-bigbangRandStartPos, bigbangRandStartPos)
 						);
 					break;
 			}
@@ -352,6 +388,8 @@ public class MainScript : MonoBehaviour {
 
 			dotsData[i] = d;
 			positions[i] = d.position;
+			colors[i] = dotColors[dotTypes[d.dotType].colorIndex];
+			sizes[i] = dotTypes[d.dotType].size;
 
 			if (renderTarget == RenderTarget.GAMEOBJECTS) {
 				_dot = Instantiate(dotPrefab, dotsHolder);
@@ -368,15 +406,16 @@ public class MainScript : MonoBehaviour {
 		IsInitted = true;
 	}
 
-	private void initDotTypes () {
+	private void createDotTypes () {
 
 		dotTypes = new DotType[dotColors.Length];
 
 		for (int i = 0; i < dotTypes.Length; i++) {
 			dotTypes[i] = new DotType();
-			dotTypes[i].colorIndex = Random.Range(0, dotColors.Length);
+			//dotTypes[i].colorIndex = Random.Range(0, dotColors.Length);
+			dotTypes[i].colorIndex = i;
 			dotTypes[i].size = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
-			dotTypes[i].friction = .95f;
+			dotTypes[i].friction = Random.Range(.87f, .987f);
 			dotTypes[i].interactSettings = createInteractSettings(dotTypes[i].size);
 
 		}
@@ -385,22 +424,24 @@ public class MainScript : MonoBehaviour {
 	private InteractSettings createInteractSettings (float dotSize) {
 		InteractSettings i = new InteractSettings();
 
-		i.minDistance = dotSize + Random.Range(0f, 4f);
-		i.minDistanceRepelPow = Random.Range(1f, 3f);
-		i.minDistanceRepelStrength = Random.Range(1f, 3f);
+		i.minDistance = (dotSize  / 2f) + Random.Range(0f, 9f);
+		i.minDistanceRepelPowFactor = Random.Range(1f, 4f);
+		i.minDistanceRepelStrength = Random.Range(1f, 1.5f);
 		i.interactDistance = i.minDistance + Random.Range(dotSettings.dotAttractionDistance.min, dotSettings.dotAttractionDistance.max);
 		i.interactStrength = Random.Range(-1f, 1f);
 
 		return i;
 	}
 
+
+	private void initDotsSizes () {
+		for (int i = 0; i < dotSizesPerColor.Length; i++) {
+			dotSizesPerColor[i] = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
+		}
+	}
+
 	#endregion
 
-	DotData _d1;
-	DotData _d2;
-	Vector3 _v;
-	float colorInteraction;
-	int i, j;
 	private void calcInScript () {
 		int dotsDataLength = dotsData.Length;
 		for (i = 0; i < dotsDataLength; i++) {
@@ -462,182 +503,21 @@ public class MainScript : MonoBehaviour {
 		return attractionMatrix[p1, p2]; ;
 	}
 
-	private void calcComputeShader2D () {
-		int kernelID = dotsComputeShader2D.FindKernel("CSMain");
-
-		//ComputeBuffer cb = new ComputeBuffer(dotsData.Length, DotData.Size);
-		//cb.SetData(dotsData);
-		dotsComputeShader2D.SetBuffer(kernelID, "DotsBuffer", cb);
-		dotsComputeShader2D.SetInt("numDots", dotsData.Length);
-
-		ComputeBuffer _colorMatrixBuffer = new ComputeBuffer(attractionMatrix.Length, attractionMatrix.Length * sizeof(float));
-		float[] colMatrix = new float[attractionMatrix.Length];
-		for (int i = 0; i < attractionMatrix.GetLength(0); i++) {
-			for (int j = 0; j < attractionMatrix.GetLength(1); j++) {
-				colMatrix[i + j * attractionMatrix.GetLength(1)] = attractionMatrix[i, j];
-			}
-		}
-		_colorMatrixBuffer.SetData(colMatrix);
-		dotsComputeShader2D.SetBuffer(kernelID, "colorMatrixBuffer", _colorMatrixBuffer);
-		dotsComputeShader2D.SetInt("numColors", 5);
-
-		dotsComputeShader2D.SetFloat("minRange", dotSettings_compute.dotsMinDistance);
-		dotsComputeShader2D.SetFloat("maxRange", dotSettings_compute.dotsAttractRange);
-
-		dotsComputeShader2D.SetFloat("maxDotSpeed", dotSettings_compute.maxDotSpeed);
-
-		dotsComputeShader2D.SetFloat("worldBoundsMinX", boundsMin.x);
-		dotsComputeShader2D.SetFloat("worldBoundsMinY", boundsMin.y);
-		dotsComputeShader2D.SetFloat("worldBoundsMaxX", boundsMax.x);
-		dotsComputeShader2D.SetFloat("worldBoundsMaxY", boundsMax.y);
-
-		dotsComputeShader2D.SetFloat("proximityRepulseForce", dotSettings_compute.proximityRepulseForce);
-		dotsComputeShader2D.SetFloat("attractionForce", dotSettings_compute.attractionForce);
-		dotsComputeShader2D.SetFloat("attractionForceDivFactor", attractionForceDivFactor);
-		dotsComputeShader2D.SetFloat("globalFriction", dotSettings_compute.globalFriction);
-
-		int threadGroups = Mathf.CeilToInt(numDots / (float)ThreadGroupSize);
-		dotsComputeShader2D.Dispatch(kernelID, threadGroups, 1, 1);
-
-
-		DotData[] d = new DotData[dotsData.Length];
-		cb.GetData(d);
-
-		for (int i = 0; i < dotsData.Length; i++) {
-			dotsData[i] = d[i];
-
-			//* update positions
-			dotsData[i].position += dotsData[i].speed;
-			// DotsBuffer[id.x].speed *= DotsBuffer[id.x].friction;
-			dotsData[i].speed *= dotSettings_compute.globalFriction;
-
-			//*/
-
-			//* constrain to world
-			if (dotsData[i].position.x < boundsMin.x) {
-				dotsData[i].speed.x *= -1f;
-				dotsData[i].position.x = boundsMin.x;
-			}
-			if (dotsData[i].position.y < boundsMin.y) {
-				dotsData[i].speed.y *= -1f;
-				dotsData[i].position.y = boundsMin.y;
-			}
-
-			if (dotsData[i].position.x > boundsMax.x) {
-				dotsData[i].speed.x *= -1f;
-				dotsData[i].position.x = boundsMax.x;
-			}
-			if (dotsData[i].position.y > boundsMax.y) {
-				dotsData[i].speed.y *= -1f;
-				dotsData[i].position.y = boundsMax.y;
-			}
-			dotsData[i].position.z = 0f; // necessary to constrain?
-
-		}
-
-		//cb.Release();
-		_colorMatrixBuffer.Release();
-	}
-
-	private void calcComputeShader3D () {
-		int kernelID = dotsComputeShader3D.FindKernel("CSMain");
-
-		dotsComputeShader3D.SetBuffer(kernelID, "DotsBuffer", cb);
-		dotsComputeShader3D.SetBuffer(kernelID, "DotsPositionBuffer", dotsPositionBuffer);
-		dotsComputeShader3D.SetInt("numDots", dotsData.Length);
-
-		dotsComputeShader3D.SetBuffer(kernelID, "colorMatrixBuffer", _colorMatrixBuffer);
-		dotsComputeShader3D.SetInt("numColors", 5);
-
-
-		dotsComputeShader3D.SetFloat("minRange", dotSettings_compute.dotsMinDistance);
-		dotsComputeShader3D.SetFloat("maxRange", dotSettings_compute.dotsAttractRange);
-
-		dotsComputeShader3D.SetFloat("maxDotSpeed", dotSettings_compute.maxDotSpeed);
-
-		dotsComputeShader3D.SetFloat("proximityRepulseForce", dotSettings_compute.proximityRepulseForce);
-		dotsComputeShader3D.SetFloat("attractionForce", dotSettings_compute.attractionForce);
-		dotsComputeShader3D.SetFloat("attractionForceDivFactor", attractionForceDivFactor);
-		dotsComputeShader3D.SetFloat("globalFriction", dotSettings_compute.globalFriction);
-
-		int threadGroups = Mathf.CeilToInt(numDots / (float)ThreadGroupSize);
-		dotsComputeShader3D.Dispatch(kernelID, threadGroups, 1, 1);
-
-
-
-
-		kernelID = dotsComputeShader3D.FindKernel("CalcPositions");
-
-		dotsComputeShader3D.SetFloat("worldBoundsMinX", boundsMin.x);
-		dotsComputeShader3D.SetFloat("worldBoundsMinY", boundsMin.y);
-		dotsComputeShader3D.SetFloat("worldBoundsMinZ", boundsMin.z);
-		dotsComputeShader3D.SetFloat("worldBoundsMaxX", boundsMax.x);
-		dotsComputeShader3D.SetFloat("worldBoundsMaxY", boundsMax.y);
-		dotsComputeShader3D.SetFloat("worldBoundsMaxZ", boundsMax.z);
-
-		dotsComputeShader3D.SetFloat("globalFriction", dotSettings_compute.globalFriction);
-
-		dotsComputeShader3D.SetBuffer(kernelID, "DotsPositionBuffer", dotsPositionBuffer);
-		dotsComputeShader3D.SetBuffer(kernelID, "DotsBuffer", cb);
-		dotsComputeShader3D.Dispatch(kernelID, threadGroups, 1, 1);
-
-		//DotData[] d = new DotData[dotsData.Length];
-		//cb.GetData(dotsData);
-		//dotsData
-		/*
-
-		for (int i = 0; i < dotsData.Length; i++) {
-			dotsData[i] = d[i];
-
-			// update positions
-			dotsData[i].position += dotsData[i].speed;
-			// DotsBuffer[id.x].speed *= DotsBuffer[id.x].friction;
-			dotsData[i].speed *= dotSettings_compute.globalFriction;
-
-			// constrain to world
-			if (dotsData[i].position.x < boundsMin.x) {
-				dotsData[i].speed.x *= -1f;
-				dotsData[i].position.x = boundsMin.x;
-			}
-			if (dotsData[i].position.y < boundsMin.y) {
-				dotsData[i].speed.y *= -1f;
-				dotsData[i].position.y = boundsMin.y;
-			}
-			if (dotsData[i].position.z < boundsMin.z) {
-				dotsData[i].speed.z *= -1f;
-				dotsData[i].position.z = boundsMin.z;
-			}
-
-			if (dotsData[i].position.x > boundsMax.x) {
-				dotsData[i].speed.x *= -1f;
-				dotsData[i].position.x = boundsMax.x;
-			}
-			if (dotsData[i].position.y > boundsMax.y) {
-				dotsData[i].speed.y *= -1f;
-				dotsData[i].position.y = boundsMax.y;
-			}
-			if (dotsData[i].position.z > boundsMax.z) {
-				dotsData[i].speed.z *= -1f;
-				dotsData[i].position.z = boundsMax.z;
-			}
-		}
-		//*/
-
-		//cb.Release();
-		//_colorMatrixBuffer.Release();
-	}
-
 	private void calcComputeShaderGeneric () {
 		int kernelID = dotsComputeShaderGeneric.FindKernel("CSMain");
 
-		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsBuffer", cb);
-		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsPositionBuffer", dotsPositionBuffer);
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsBuffer", dots_cb);
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotTypesBuffer", dotTypes_cb);
 		dotsComputeShaderGeneric.SetInt("numDots", dotsData.Length);
+		dotsComputeShaderGeneric.SetInt("numDotTypes", dotTypes.Length);
 
-		dotsComputeShaderGeneric.SetBuffer(kernelID, "colorMatrixBuffer", _colorMatrixBuffer);
-		dotsComputeShaderGeneric.SetInt("numColors", 5);
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsPositionBuffer", dotsPositionBuffer);
+
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "colorMatrixBuffer", colorMatrix_cb);
+		dotsComputeShaderGeneric.SetInt("numColors", dotTypes.Length);
 
 
+		// TODO remove these -> are part of the new InteractSettings struct
 		dotsComputeShaderGeneric.SetFloat("minRange", dotSettings_compute.dotsMinDistance);
 		dotsComputeShaderGeneric.SetFloat("maxRange", dotSettings_compute.dotsAttractRange);
 
@@ -674,19 +554,16 @@ public class MainScript : MonoBehaviour {
 		dotsComputeShaderGeneric.SetFloat("globalFriction", dotSettings_compute.globalFriction);
 
 		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsPositionBuffer", dotsPositionBuffer);
-		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsBuffer", cb);
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotTypesBuffer", dotTypes_cb);
+		dotsComputeShaderGeneric.SetBuffer(kernelID, "DotsBuffer", dots_cb);
 		dotsComputeShaderGeneric.Dispatch(kernelID, threadGroups, 1, 1);
 
 		// retrieve the calculated only if not using VfxGraph as target
 		if (renderTarget != RenderTarget.VFXGRAPH) {
-			cb.GetData(dotsData);
+			dots_cb.GetData(dotsData);
 		}
 	}
 
-	private ParticleSystem.Particle[] m_Particles;
-	private ParticleSystem.Particle p;
-	private ParticleSystem.MainModule psMain;
-	private int numParticlesAlive;
 	private void updateParticleSystem () {
 		psMain = ps.main;
 
@@ -752,7 +629,7 @@ public class MainScript : MonoBehaviour {
 				colMatrix[i + j * attractionMatrix.GetLength(1)] = attractionMatrix[i, j];
 			}
 		}
-		_colorMatrixBuffer.SetData(colMatrix);
+		colorMatrix_cb.SetData(colMatrix);
 	}
 
 	private void updateDotsGameObjects () {
@@ -771,12 +648,16 @@ public class MainScript : MonoBehaviour {
 
 
 	private void OnDestroy () {
+
 		// ComputeBuffers
-		if (cb != null) {
-			cb.Release();
+		if (dots_cb != null) {
+			dots_cb.Release();
 		}
-		if (_colorMatrixBuffer != null) {
-			_colorMatrixBuffer.Release();
+		if (dotTypes_cb != null) {
+			dotTypes_cb.Release();
+		}
+		if (colorMatrix_cb != null) {
+			colorMatrix_cb.Release();
 		}
 
 		// GraphicsBuffers
