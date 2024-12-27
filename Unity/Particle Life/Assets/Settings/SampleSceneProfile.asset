@@ -18,10 +18,10 @@ MonoBehaviour:
     m_Value: 1
   intensity:
     m_OverrideState: 1
-    m_Value: 7
+    m_Value: 15
   scatter:
     m_OverrideState: 1
-    m_Value: 0.3
+    m_Value: 0.14
   clamp:
     m_OverrideState: 0
     m_Value: 65471.94
@@ -87,7 +87,7 @@ MonoBehaviour:
     m_Value: 1
   gaussianStart:
     m_OverrideState: 1
-    m_Value: 300
+    m_Value: 150
   gaussianEnd:
     m_OverrideState: 1
     m_Value: 200
@@ -146,10 +146,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97c23e3b12dc18c42a140437e53d3951, type: 3}
   m_Name: Tonemapping
   m_EditorClassIdentifier: 
-  active: 0
+  active: 1
   mode:
     m_OverrideState: 1
-    m_Value: 1
+    m_Value: 2
 --- !u!114 &7622266399223885504
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -165,7 +165,7 @@ MonoBehaviour:
   active: 0
   intensity:
     m_OverrideState: 1
-    m_Value: 0.29
+    m_Value: 0.1
 --- !u!114 &8390631736831825195
 MonoBehaviour:
   m_ObjectHideFlags: 3

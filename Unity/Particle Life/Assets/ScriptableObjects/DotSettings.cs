@@ -11,6 +11,12 @@ public class DotSettings : ScriptableObject {
 		public float max;
 	}
 
+	public enum DotRepelMethod {
+		MY_ORIGINAL = 1,
+		OFFICIAL = 2
+	}
+	public DotRepelMethod dotRepelMethod;
+
 	[Header("init values")]
 	public MinMax dotSize;
 	public MinMax dotAttractionDistance;
@@ -21,6 +27,11 @@ public class DotSettings : ScriptableObject {
 	public float frictionUpperLimit = .96f;
 	public float frictionLowerLimit = .7f;
 
+
+	[Space(10)]
+	public float boundsDeflectMinDistance = 10f;
+	public float boundsDeflectPowFactor = 2f;
+	public float boundsDeflectStrength = 2f;
 
 	// TODO remove these two -> are now part of InteractSettings struct aka unique per dot type
 	[Space(10)]

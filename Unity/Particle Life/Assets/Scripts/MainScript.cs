@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UIElements;
 using UnityEngine.VFX;
 using static MainScript;
 
@@ -132,7 +133,7 @@ public class MainScript : MonoBehaviour {
 	[Space(10)]
 	public Color[] dotColors = new Color[5];
 
-	[Header ("World bounds")]
+	[Header("World bounds")]
 	public Vector3 boundsMin = new Vector3(-150f, -100f, 0f);
 	public Vector3 boundsMax = new Vector3(150f, 100f, 0f);
 
@@ -182,7 +183,9 @@ public class MainScript : MonoBehaviour {
 				break;
 		}
 
+		generateColors();
 		initDots();
+		initAttractionMatrix();
 
 		// init compute buffers
 		dots_cb = new ComputeBuffer(dotsData.Length, DotData.Size);
@@ -190,10 +193,6 @@ public class MainScript : MonoBehaviour {
 
 		dotTypes_cb = new ComputeBuffer(dotTypes.Length, DotType.Size);
 		dotTypes_cb.SetData(dotTypes);
-
-		colorMatrix_cb = new ComputeBuffer(attractionMatrix.Length, attractionMatrix.Length * sizeof(float));
-		updateAttractionRulesComputeBuffer();
-
 
 		// Shuriken particle syste,
 		var main = ps.main;
@@ -279,53 +278,165 @@ public class MainScript : MonoBehaviour {
 
 	}
 
+	#region control Dots helper functions
+
+	public void randomizeAllAttractionSettings () {
+		Debug.Log("f:randomizeAllAttractionSettings()");
+
+		for (int i = 0; i < attractionMatrix.GetLength(0); i++) {
+			for (int j = 0; j < attractionMatrix.GetLength(1); j++) {
+				attractionMatrix[i, j] = Random.Range(-1f, 1f);
+			}
+		}
+
+		// update _colorMatrixBuffer
+		updateAttractionRulesComputeBuffer();
+	}
+
+	public void randomizeAllAttractionSettingsExtreme  () {
+		Debug.Log("f:randomizeAllAttractionSettingsExtreme()");
+
+		for (int i = 0; i < attractionMatrix.GetLength(0); i++) {
+			for (int j = 0; j < attractionMatrix.GetLength(1); j++) {
+				attractionMatrix[i, j] = (Random.Range(0f, 1f) < 0.5f) ? -1f : 1f;
+			}
+		}
+
+		// update _colorMatrixBuffer
+		updateAttractionRulesComputeBuffer();
+	}
+
+	public void setEqualishAttractionSettings () {
+		Debug.Log("f:setEqualishAttractionSettings()");
+
+		for (int i = 0; i < attractionMatrix.GetLength(0); i++) {
+			for (int j = 0; j < attractionMatrix.GetLength(1); j++) {
+				attractionMatrix[i, j] = -.35f;
+				if (i == j) attractionMatrix[i, j] = 1f;
+			}
+			attractionMatrix[i, Random.Range(0, attractionMatrix.GetLength(1))] = .65f;
+		}
+
+		// update _colorMatrixBuffer
+		updateAttractionRulesComputeBuffer();
+	}
+
+	public void randomizeSingleAttractionSettings () {
+		Debug.Log("f:randomizeSingleAttractionSettings()");
+
+		int randCol = Random.Range(0, attractionMatrix.GetLength(0));
+		for (int i = 0; i < attractionMatrix.GetLength(1); i++) {
+			attractionMatrix[randCol, i] = Random.Range(-1f, 1f);
+		}
+
+		// update colormatrix compute buffer
+		updateAttractionRulesComputeBuffer();
+	}
+
+	public void randomizeDotFrictions () {
+		Debug.Log("f:randomizeDotFrictions()");
+
+		for (int i = 0; i < dotTypes.Length; i++) {
+			dotTypes[i].friction = Random.Range(.84f, .985f);
+		}
+		dotTypes_cb.SetData(dotTypes);
+	}
+
+	public void resetScene () {
+		Debug.Log("f:resetScene()");
+
+		IsInitted = false;
+
+		generateColors();
+		initDots();
+		initAttractionMatrix();
+
+		// update computebuffer with new particles definitions
+		// init compute buffers
+		dots_cb = new ComputeBuffer(dotsData.Length, DotData.Size);
+		dots_cb.SetData(dotsData);
+
+		dotTypes_cb = new ComputeBuffer(dotTypes.Length, DotType.Size);
+		dotTypes_cb.SetData(dotTypes);
+	}
+
+	public void setRepelMethod (int r) {
+		dotSettings.dotRepelMethod = (DotSettings.DotRepelMethod)r;
+	}
+
+	#endregion
+
 	private void handleKeyboardInput () {
 
 		// randomize all matrix values
 		if (Input.GetKeyUp(KeyCode.Alpha1)) {
-			attractionMatrix = new float[,] {
-											{ Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f) },
-											{ Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f) },
-											{ Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f) },
-											{ Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f) },
-											{ Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f) }
-										};
-
-			// update _colorMatrixBuffer
-			updateAttractionRulesComputeBuffer();
+			randomizeAllAttractionSettings();
 		}
 
 		// randomize only one color 
 		if (Input.GetKeyUp(KeyCode.Alpha2)) {
-			int randCol = Random.Range(0, attractionMatrix.GetLength(0));
-			for (int i = 0; i < attractionMatrix.GetLength(1); i++) {
-				attractionMatrix[randCol, i] = Random.Range(-1f, 1f);
-			}
-
-			// update _colorMatrixBuffer
-			updateAttractionRulesComputeBuffer();
+			randomizeSingleAttractionSettings();
 		}
 
-		// randomize only one value of one color
+		// randomize all the frictions
 		if (Input.GetKeyUp(KeyCode.Alpha3)) {
-			attractionMatrix[Random.Range(0, attractionMatrix.GetLength(0)), Random.Range(0, attractionMatrix.GetLength(1))] = Random.Range(-1f, 1f);
+			randomizeDotFrictions();
+		}
 
-			// update _colorMatrixBuffer
-			updateAttractionRulesComputeBuffer();
+		// randomize all attraction matrix but extreme (-1f or 1f, nothing in between)
+		if (Input.GetKeyUp(KeyCode.Alpha4)) {
+			randomizeAllAttractionSettingsExtreme();
+		}
+
+		// reset attraction matrix and apply a semi-regular repel and attract force (does this create more symmetrical layouts?)
+		if (Input.GetKeyUp(KeyCode.Alpha5)) {
+			setEqualishAttractionSettings();
+		}
+
+		// change color palette
+		if (Input.GetKeyUp(KeyCode.Alpha6)) {
+			generateColors();
+
+			Color[] colors = new Color[numDots];
+			// for now: manual update
+			for (int i = 0; i < numDots; i++) {
+				colors[i] = dotColors[dotTypes[dotsData[i].dotType].colorIndex];
+			}
+			dotsColorsBuffer.SetData(colors);
 		}
 
 		// reset
 		if (Input.GetKeyUp(KeyCode.Space)) {
-			IsInitted = false;
-			initDots();
+			resetScene();
+		}
 
-			// update computebuffer with new particles definitions
-			dots_cb.SetData(dotsData);
-			dotTypes_cb.SetData(dotTypes);
+		if (Input.GetKeyUp(KeyCode.LeftBracket)) {
+			setRepelMethod(1);
+			dotSettings.proximityRepulseForce = 15f;
+		}
+		if (Input.GetKeyUp(KeyCode.RightBracket)) {
+			setRepelMethod(2);
+			dotSettings.proximityRepulseForce = .8f;
 		}
 	}
 
 	#region Init
+
+	private void initColorsList() {
+		Debug.Log("f:initColorsList");
+
+		int r = Random.Range(3, 6);
+		dotColors = new Color[r];
+		generateColors();
+	}
+
+	public void generateColors () {
+		Debug.Log("f:generateColors");
+
+		for (int i = 0; i < dotColors.Length; i++) {
+			dotColors[i] = Color.HSVToRGB(Random.Range(0f, 1f), Random.Range(.6f, 1f), Random.Range(.6f, 1f));
+		}
+	}
 
 	private void initDots () {
 		if (dotsPositionBuffer != null) dotsPositionBuffer.Dispose();
@@ -415,7 +526,7 @@ public class MainScript : MonoBehaviour {
 			//dotTypes[i].colorIndex = Random.Range(0, dotColors.Length);
 			dotTypes[i].colorIndex = i;
 			dotTypes[i].size = Random.Range(dotSettings.dotSize.min, dotSettings.dotSize.max);
-			dotTypes[i].friction = Random.Range(.87f, .987f);
+			dotTypes[i].friction = Random.Range(.84f, .985f);
 			dotTypes[i].interactSettings = createInteractSettings(dotTypes[i].size);
 
 		}
@@ -424,15 +535,28 @@ public class MainScript : MonoBehaviour {
 	private InteractSettings createInteractSettings (float dotSize) {
 		InteractSettings i = new InteractSettings();
 
-		i.minDistance = (dotSize  / 2f) + Random.Range(0f, 9f);
+		i.minDistance = (dotSize / 2f) + Mathf.Pow(Random.Range(0f, 3.5f), 2f);
 		i.minDistanceRepelPowFactor = Random.Range(1f, 4f);
-		i.minDistanceRepelStrength = Random.Range(1f, 1.5f);
+		i.minDistanceRepelStrength = Random.Range(1f, 4.5f);
 		i.interactDistance = i.minDistance + Random.Range(dotSettings.dotAttractionDistance.min, dotSettings.dotAttractionDistance.max);
 		i.interactStrength = Random.Range(-1f, 1f);
 
 		return i;
 	}
 
+	private void initAttractionMatrix () {
+		attractionMatrix = new float[dotColors.Length, dotColors.Length];
+		for (int i = 0; i < attractionMatrix.GetLength(0); i++) {
+			for (int j = 0; j < attractionMatrix.GetLength(1); j++) {
+				//attractionMatrix[i, j] = Random.Range(-1f, 1f);
+				attractionMatrix[i, j] = 0f;
+				if (i == j) attractionMatrix[i, j] = 1f;
+			}
+		}
+
+		// update _colorMatrixBuffer
+		updateAttractionRulesComputeBuffer();
+	}
 
 	private void initDotsSizes () {
 		for (int i = 0; i < dotSizesPerColor.Length; i++) {
@@ -523,6 +647,12 @@ public class MainScript : MonoBehaviour {
 
 		dotsComputeShaderGeneric.SetFloat("maxDotSpeed", dotSettings_compute.maxDotSpeed);
 
+		dotsComputeShaderGeneric.SetFloat("boundsDeflectMinDistance", dotSettings_compute.boundsDeflectMinDistance);
+		dotsComputeShaderGeneric.SetFloat("boundsDeflectPowFactor", dotSettings_compute.boundsDeflectPowFactor);
+		dotsComputeShaderGeneric.SetFloat("boundsDeflectStrength", dotSettings_compute.boundsDeflectStrength);
+
+		dotsComputeShaderGeneric.SetInt("dotRepelMethod", (int)dotSettings_compute.dotRepelMethod);
+
 		dotsComputeShaderGeneric.SetFloat("deltaTime", Time.deltaTime);
 		dotsComputeShaderGeneric.SetFloat("proximityRepulseForce", dotSettings_compute.proximityRepulseForce);
 		dotsComputeShaderGeneric.SetFloat("attractionForce", dotSettings_compute.attractionForce);
@@ -531,7 +661,6 @@ public class MainScript : MonoBehaviour {
 
 		int threadGroups = Mathf.CeilToInt(numDots / (float)ThreadGroupSize);
 		dotsComputeShaderGeneric.Dispatch(kernelID, threadGroups, 1, 1);
-
 
 
 		switch (particleLifeDimensions) {
@@ -629,6 +758,8 @@ public class MainScript : MonoBehaviour {
 				colMatrix[i + j * attractionMatrix.GetLength(1)] = attractionMatrix[i, j];
 			}
 		}
+
+		colorMatrix_cb = new ComputeBuffer(attractionMatrix.Length, attractionMatrix.Length * sizeof(float));
 		colorMatrix_cb.SetData(colMatrix);
 	}
 

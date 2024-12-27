@@ -48,8 +48,14 @@ struct DotType {
 };
 int numDotTypes;
 
+int dotRepelMethod = 1;
+
 RWStructuredBuffer<Dot> DotsBuffer;
 StructuredBuffer<DotType> DotTypesBuffer;
+
+float boundsDeflectMinDistance;
+float boundsDeflectPowFactor;
+float boundsDeflectStrength;
 
 
 RWStructuredBuffer<float3> DotsPositionBuffer;
@@ -94,9 +100,13 @@ void CSMain (uint3 id : SV_DispatchThreadID)
                 float3 _f1 = d2.position - d.position;
                 _f1 = normalize(_f1);
 
-                // d.speed += _f1 * (-proximityRepulseForce * attractionForce / attractionForceDivFactor);
+				if (dotRepelMethod == 1) {
+	                d.speed += _f1 * (-proximityRepulseForce * attractionForce / attractionForceDivFactor);
+				}
+				if (dotRepelMethod == 2) {
+					d.speed += _f1 * -repelPow * proximityRepulseForce;
+    			}
                 // d.speed += _f1 * -repelPow;
-                d.speed += _f1 * repelPow * -proximityRepulseForce;
             }
 			
             // if within configured radius: attract or repel (dependent on color-matrix)  
@@ -118,11 +128,47 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         }
     }
 
+	//* handle bounds
+	float _pctDist;
+	if (abs(d.position.x - worldBoundsMinX) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.x - worldBoundsMinX) / boundsDeflectMinDistance);
+		d.speed += float3(1.0, 0.0, 0.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	if (abs(d.position.x - worldBoundsMaxX) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.x - worldBoundsMaxX) / boundsDeflectMinDistance);
+		d.speed += float3(-1.0, 0.0, 0.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	if (abs(d.position.y - worldBoundsMinY) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.y - worldBoundsMinY) / boundsDeflectMinDistance);
+		d.speed += float3(0.0, 1.0, 0.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	if (abs(d.position.y - worldBoundsMaxY) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.y - worldBoundsMaxY) / boundsDeflectMinDistance);
+		d.speed += float3(0.0, -1.0, 0.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	if (abs(d.position.z - worldBoundsMinZ) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.z - worldBoundsMinZ) / boundsDeflectMinDistance);
+		d.speed += float3(0.0, 0.0, 1.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	if (abs(d.position.z - worldBoundsMaxZ) < boundsDeflectMinDistance) {
+		_pctDist = 1.0 - (abs(d.position.z - worldBoundsMaxZ) / boundsDeflectMinDistance);
+		d.speed += float3(0.0, 0.0, -1.0) * boundsDeflectStrength * pow(_pctDist, boundsDeflectPowFactor);
+	}
+	//*/
+
     if (length(d.speed) > maxDotSpeed) {
         d.speed = normalize(d.speed) * maxDotSpeed;
     }
 
     DotsBuffer[id.x] = d;	
+}
+
+float3 constrainToBounds(float3 d) {
+	d.x = clamp(d.x, worldBoundsMinX, worldBoundsMaxX);
+	d.y = clamp(d.y, worldBoundsMinY, worldBoundsMaxY);
+	d.z = clamp(d.z, worldBoundsMinZ, worldBoundsMaxZ);
+
+	return d;
 }
 
 // TODO -> unify CalcPositions2D and CalcPositions3D -> it's ridiculously the same
@@ -159,10 +205,11 @@ void CalcPositions2D (uint3 id : SV_DispatchThreadID)
 		d.position.y = worldBoundsMaxY;
 	}
 
-	d.position.z = 0.0; // necessary to constrain?
+	d.position.z = 0.0; // necessary to constrain? 
+
+	d.position = constrainToBounds(d.position);
 
     DotsBuffer[id.x] = d;
-
 	DotsPositionBuffer[id.x] = d.position;
 }
 
@@ -208,6 +255,8 @@ void CalcPositions3D (uint3 id : SV_DispatchThreadID)
 		d.speed.z *= -1.0;
 		d.position.z = worldBoundsMaxX;
 	}
+
+	d.position = constrainToBounds(d.position);
 
     DotsBuffer[id.x] = d;
     DotsPositionBuffer[id.x] = d.position;

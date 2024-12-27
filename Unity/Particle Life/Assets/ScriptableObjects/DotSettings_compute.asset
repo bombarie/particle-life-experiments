@@ -12,17 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 356c07973f55d4e20930283588e36c9f, type: 3}
   m_Name: DotSettings_compute
   m_EditorClassIdentifier: 
+  dotRepelMethod: 2
   dotSize:
-    min: 0.9
-    max: 2
+    min: 0.85
+    max: 5
   dotAttractionDistance:
     min: 30
     max: 100
   globalFriction: 0.97
   frictionUpperLimit: 0.96
   frictionLowerLimit: 0.7
+  boundsDeflectMinDistance: 150
+  boundsDeflectPowFactor: 12
+  boundsDeflectStrength: 70.68
   dotsAttractRange: 80
   dotsMinDistance: 0
-  attractionForce: 351
-  proximityRepulseForce: 50
-  maxDotSpeed: 3
+  attractionForce: 40
+  proximityRepulseForce: 0.2
+  maxDotSpeed: 5
