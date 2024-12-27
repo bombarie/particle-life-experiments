@@ -22,7 +22,7 @@ float[][] colorMatrix = {
 };
 
 void settings() {
-  size(1400, 1000, P2D);
+  size(1280, 720, P2D);
 }
 
 void setup() {
@@ -51,6 +51,7 @@ void draw() {
       if (_d1 == _d2) continue;
 
       if (_d1.position.dist(_d2.position) < (_d1.dotSize + minRange)) {
+      //if (_d1.position.dist(_d2.position) < (_d1.dotSize + minRange + _d1.speed.mag())) {
         d = PVector.sub(_d2.position, _d1.position);
         d = d.normalize();
 
@@ -91,6 +92,7 @@ void keyReleased() {
 
   switch(key) {
   case '1':
+    println("reset relations -> attract to yourself");
     colorMatrix = new float[][] {
       // R    G    B    O    P
       { 1.0, 0.0, 0.0, 0.0, 0.0 }, // RED
@@ -103,17 +105,20 @@ void keyReleased() {
     //colorMatrix[4] = new float[] { 0.0, 0.0, 0.0, 1.0, 0.0 }; // ORANGE
     break;
   case '2':
+    println("change something in GREEN");
     colorMatrix[3] = new float[] { 0.0, 1.0, 0.0, -0.63, 0.0 }; // GREEN
 
     break;
   case '3':
+    println("change something in ORANGE");
     colorMatrix[4] = new float[] { 0.0, -0.6, 0.0, 1.0, 0.0 }; // ORANGE
 
 
     break;
 
   case '4':
-    float repelForce = -0.3;
+    // float repelForce = -0.3;
+    println("repulse yourself");
     colorMatrix = new float[][] {
       // R    G    B    O    P
       { -0.3, 0.0, 0.0, 0.0, 0.0 }, // RED
@@ -125,6 +130,7 @@ void keyReleased() {
     break;
 
   case '5':
+    println("pre-set relations -> optimizes for followers");
     colorMatrix = new float[][] {
       // R    G    B    O    P
       { 0.5, 0.4, 0.0, 0.0, 0.0 }, // RED
@@ -136,6 +142,7 @@ void keyReleased() {
     break;
 
   case '6':
+    println("randomize all relations");
     colorMatrix = new float[][] {
       // R    G    B    O    P
       { r(), r(), r(), r(), r() }, // RED
@@ -181,6 +188,7 @@ void keyReleased() {
     }
     break;
   }
+
 }
 
 float r() {

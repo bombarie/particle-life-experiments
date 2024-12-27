@@ -41,7 +41,7 @@ class Dot {
   public void update(float __noiseIncr) {
     // add random movement
     // float noiseVal = noise(position.x / 1000.0, position.y / 1000.0);
-    
+
     // the noise addition doesn't apppear to do SHIT
     //float noiseFinalStrength = 1.0;
     //this.position.x += (noise(position.x / 100.0 + __noiseIncr) - .49) * noiseStrength * noiseFinalStrength;
@@ -51,13 +51,30 @@ class Dot {
     position.y += speed.y;
 
     speed = speed.mult(friction);
+    //slowSpeed = slowSpeed.mult(0.4).add(speed.mult(.6));
   }
 
+  private PVector slowSpeed = new PVector(0.0, 0.0);
   public void draw() {
     selectColorByIndex();
     ellipseMode(CENTER);
     noStroke();
-    circle(position.x, position.y, dotSize);
+    // circle(position.x, position.y, dotSize);
+
+    //* meh, what a shitshow of random
+    pushMatrix();
+    translate(position.x, position.y);
+    //scale(max(0.5, speed.mag() / 2.0));
+    // float s = constrain(speed.mag(), .5, 2.5);
+    float s = constrain(speed.mag(), .8, 2.0);
+    scale(s);
+    //rotate(atan2(slowSpeed.y, slowSpeed.x));
+    rotate(atan2(speed.y, speed.x));
+    //ellipse(0, 0, dotSize, dotSize / 6.0);
+    ellipse(0, 0, dotSize, dotSize / constrain(map(speed.mag(), 0.0, 4.0, 6.0, 1.0), 1.0, 6.0));
+    //circle(0, 0, dotSize);
+    popMatrix();
+    //*/
   }
 
   public DotColors GetColor() {
@@ -66,7 +83,7 @@ class Dot {
 
   public void AddForce(PVector v) {
     //position.add(v);
-      speed.add(v);
+    speed.add(v);
   }
   public void AttractTo(PVector v) {
   }
@@ -95,15 +112,15 @@ class Dot {
 
   private void selectColorByIndex() {
     if (colorIndex == 0) {
-      fill(241, 47, 84);
+      fill(194, 33, 83);
     } else if (colorIndex == 1) {
-      fill(19, 241, 103);
+      fill(55, 184, 192);
     } else if (colorIndex == 2) {
-      fill(18, 145, 242);
+      fill(148, 35, 226);
     } else if (colorIndex == 3) {
-      fill(236, 122, 10);
+      fill(241, 137, 26);
     } else if (colorIndex == 4) {
-      fill(251, 14, 209);
+      fill(109, 208, 29);
     }
   }
 
